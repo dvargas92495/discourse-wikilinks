@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "target": "es2015",
+    "allowJs": false,
+    "lib": ["DOM", "esnext"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": true,
+    "outDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "importHelpers": true,
+    "paths": {
+      "discourse": ["../../app/assets/javascripts/discourse"],
+      "discourse/helpers": ["../../app/assets/javascripts/discourse/app/helpers"],
+      "discourse/models": ["../../app/assets/javascripts/discourse/app/models"],
+      "discourse/widgets": ["../../app/assets/javascripts/discourse/app/widgets"],
+      "discourse-common": ["../../app/assets/javascripts/discourse-common"],
+    }
+  },
+  "include": ["assets", "src/PostPopover.tsx"],
+  "exclude": ["node_modules", "**/__tests__/*"]
+}
