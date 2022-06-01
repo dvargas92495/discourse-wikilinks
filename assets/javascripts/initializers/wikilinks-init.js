@@ -287,6 +287,54 @@ const initializeWikilinks = () => {
       }
     }
   });
+
+  const PREVIEW_WRAPPER = "d-editor-preview-wrapper";
+  const isPreview = (d) => d.classList && d.classList.contains(PREVIEW_WRAPPER);
+  const REGEX = /\[\[([^\]]+)\]\]/;
+  new MutationObserver(function (records) {
+    records
+      .flatMap((r) =>
+        Array.from(r.addedNodes)
+          .filter((d) => isPreview(d) || d.hasChildNodes())
+          .flatMap((d) =>
+            isPreview(d) ? [d] : Array.from(d.querySelectorAll(PREVIEW_WRAPPER))
+          )
+      )
+      .forEach((wrapper) => {
+        new MutationObserver(function () {
+          document.querySelectorAll(".d-editor-preview p").forEach((p) => {
+            const nodesToEdit = Array.from(p.childNodes).filter(
+              (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
+            );
+            nodesToEdit.forEach((n) => {
+              const parts = n.nodeValue.split(REGEX);
+              parts.forEach((part, index) => {
+                if (index % 2 === 1) {
+                  const anchor = document.createElement("a");
+                  anchor.href = `/t/${part
+                    .replace(/[^a-z0-9A-Z\s/]/g, "")
+                    .replace(/[\s/]/g, "-")
+                    .toLowerCase()}`;
+                  anchor.innerText = part;
+                  p.insertBefore(anchor, n);
+                } else {
+                  p.insertBefore(document.createTextNode(part), n);
+                }
+              });
+              if (parts.length) n.remove();
+            });
+          });
+        }).observe(wrapper, {
+          childList: true,
+          subtree: true,
+          attributes: false,
+          characterData: true,
+        });
+      });
+  }).observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
 };
 
 export default {
