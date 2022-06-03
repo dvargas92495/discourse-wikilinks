@@ -81,7 +81,7 @@ const getCoordsFromTextarea = (t) => {
   return coordinates;
 };
 
-const initializeWikilinks = () => {
+const initializeWikilinks = (api) => {
   let posts = [];
   document.addEventListener("input", (e) => {
     const { target } = e;
@@ -288,52 +288,67 @@ const initializeWikilinks = () => {
     }
   });
 
-  const PREVIEW_WRAPPER = "d-editor-preview-wrapper";
-  const isPreview = (d) => d.classList && d.classList.contains(PREVIEW_WRAPPER);
-  const REGEX = /\[\[([^\]]+)\]\]/;
-  new MutationObserver(function (records) {
-    records
-      .flatMap((r) =>
-        Array.from(r.addedNodes)
-          .filter((d) => isPreview(d) || d.hasChildNodes())
-          .flatMap((d) =>
-            isPreview(d) ? [d] : Array.from(d.querySelectorAll(PREVIEW_WRAPPER))
-          )
-      )
-      .forEach((wrapper) => {
-        new MutationObserver(function () {
-          document.querySelectorAll(".d-editor-preview p").forEach((p) => {
-            const nodesToEdit = Array.from(p.childNodes).filter(
-              (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
-            );
-            nodesToEdit.forEach((n) => {
-              const parts = n.nodeValue.split(REGEX);
-              parts.forEach((part, index) => {
-                if (index % 2 === 1) {
-                  const anchor = document.createElement("a");
-                  anchor.href = `/t/${part
-                    .replace(/[^a-z0-9A-Z\s/]/g, "")
-                    .replace(/[\s/]/g, "-")
-                    .toLowerCase()}`;
-                  anchor.innerText = part;
-                  p.insertBefore(anchor, n);
-                } else {
-                  p.insertBefore(document.createTextNode(part), n);
-                }
+  const startWikilinksObserver = ({ wrapper, content }) => {
+    const isPreview = (d) => d.classList && d.classList.contains(wrapper);
+    const REGEX = /\[\[([^\]]+)\]\]/;
+    new MutationObserver(function (records) {
+      new Set(
+        records.flatMap((r) =>
+          Array.from(r.addedNodes)
+            .filter((d) => isPreview(d) || d.hasChildNodes())
+            .flatMap((d) =>
+              isPreview(d) ? [d] : Array.from(d.querySelectorAll(`.${wrapper}`))
+            )
+        )
+      ).forEach((wrapper) => {
+        if (!wrapper.hasAttribute("data-wikilinks-observer")) {
+          wrapper.setAttribute("data-wikilinks-observer", "true");
+          const callback = () => {
+            document.querySelectorAll(`.${content} p`).forEach((p) => {
+              const nodesToEdit = Array.from(p.childNodes).filter(
+                (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
+              );
+              nodesToEdit.forEach((n) => {
+                const parts = n.nodeValue.split(REGEX);
+                parts.forEach((part, index) => {
+                  if (index % 2 === 1) {
+                    const anchor = document.createElement("a");
+                    anchor.href = `/t/${part
+                      .replace(/[^a-z0-9A-Z\s/]/g, "")
+                      .replace(/[\s/]/g, "-")
+                      .toLowerCase()}`;
+                    anchor.innerText = part;
+                    anchor.onclick = () => window.location.assign(anchor.href);
+                    p.insertBefore(anchor, n);
+                  } else {
+                    p.insertBefore(document.createTextNode(part), n);
+                  }
+                });
+                if (parts.length) n.remove();
               });
-              if (parts.length) n.remove();
             });
+          };
+          new MutationObserver(callback).observe(wrapper, {
+            childList: true,
+            subtree: true,
+            attributes: false,
+            characterData: true,
           });
-        }).observe(wrapper, {
-          childList: true,
-          subtree: true,
-          attributes: false,
-          characterData: true,
-        });
+          callback();
+        }
       });
-  }).observe(document.body, {
-    childList: true,
-    subtree: true,
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  };
+  startWikilinksObserver({
+    wrapper: "d-editor-preview-wrapper",
+    content: "d-editor-preview",
+  });
+  startWikilinksObserver({
+    wrapper: "topic-body",
+    content: "cooked",
   });
 };
 
