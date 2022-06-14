@@ -1,7 +1,53 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { searchForTerm } from "discourse/lib/search";
+import { h } from "virtual-dom";
 
 const POPOVER_ID = "wikilinks-popover";
+
+function originalPostLinksHtml(attrs, state) {
+  if (!this.attrs.links || this.attrs.links.length === 0) {
+    // shortcut all work
+    return;
+  }
+
+  // only show incoming
+  const links = this.attrs.links.filter((l) => l.reflection).uniqBy("title");
+
+  if (links.length === 0) {
+    return;
+  }
+
+  const result = [];
+
+  // show all links
+  if (links.length <= 5 || !state.collapsed) {
+    links.forEach((l) => result.push(this.linkHtml(l)));
+  } else {
+    const max = Math.min(5, links.length);
+    for (let i = 0; i < max; i++) {
+      result.push(this.linkHtml(links[i]));
+    }
+    // 'show more' link
+    if (links.length > max) {
+      result.push(
+        h(
+          "li",
+          this.attach("link", {
+            labelCount: "post_links.title",
+            title: "post_links.about",
+            count: links.length - max,
+            action: "expandLinks",
+            className: "expand-links",
+          })
+        )
+      );
+    }
+  }
+
+  if (result.length) {
+    return h("ul.post-links", result);
+  }
+}
 
 const getCoordsFromTextarea = (t) => {
   const properties = [
@@ -71,11 +117,12 @@ const getCoordsFromTextarea = (t) => {
     top:
       windowTop +
       span.offsetTop +
-      parseInt(computed.borderTopWidth) +
-      parseInt(computed.fontSize) -
+      parseInt(computed.borderTopWidth, 10) +
+      parseInt(computed.fontSize, 10) -
       t.scrollTop -
       9,
-    left: windowLeft + span.offsetLeft + parseInt(computed.borderLeftWidth) - 1,
+    left:
+      windowLeft + span.offsetLeft + parseInt(computed.borderLeftWidth, 10) - 1,
   };
   document.body.removeChild(div);
   return coordinates;
@@ -218,14 +265,14 @@ const initializeWikilinks = (api) => {
               ? options.length - 1
               : selectedIndex - 1
             : (selectedIndex + 1) % options.length;
-          if (selectedIndex >= 0)
+          if (selectedIndex >= 0) {
             options[selectedIndex].firstChild.classList.remove(
               "wikilinks-selected"
             );
+          }
           options[newIndex].firstChild.classList.add("wikilinks-selected");
           e.preventDefault();
           e.stopPropagation();
-          console.log("moving from", selectedIndex, "to", newIndex);
         }
       }
     } else if (entered) {
@@ -300,9 +347,9 @@ const initializeWikilinks = (api) => {
               isPreview(d) ? [d] : Array.from(d.querySelectorAll(`.${wrapper}`))
             )
         )
-      ).forEach((wrapper) => {
-        if (!wrapper.hasAttribute("data-wikilinks-observer")) {
-          wrapper.setAttribute("data-wikilinks-observer", "true");
+      ).forEach((el) => {
+        if (!el.hasAttribute("data-wikilinks-observer")) {
+          el.setAttribute("data-wikilinks-observer", "true");
           const callback = () => {
             document.querySelectorAll(`.${content} p`).forEach((p) => {
               const nodesToEdit = Array.from(p.childNodes).filter(
@@ -324,11 +371,13 @@ const initializeWikilinks = (api) => {
                     p.insertBefore(document.createTextNode(part), n);
                   }
                 });
-                if (parts.length) n.remove();
+                if (parts.length) {
+                  n.remove();
+                }
               });
             });
           };
-          new MutationObserver(callback).observe(wrapper, {
+          new MutationObserver(callback).observe(el, {
             childList: true,
             subtree: true,
             attributes: false,
@@ -349,6 +398,50 @@ const initializeWikilinks = (api) => {
   startWikilinksObserver({
     wrapper: "topic-body",
     content: "cooked",
+  });
+
+  // api.addPostTransformCallback((...args) => {
+  //   console.log("posty", ...args);
+  // });
+
+  // Hacky! TODO Improve
+  let wikilinks = [
+    {
+      url: "https://youtube.com",
+      title: "YouTube",
+      internal: true,
+      reflection: true,
+    },
+  ];
+  let searchedWikilinks = false;
+  api.reopenWidget("post-links", {
+    html(attrs, state) {
+      if (searchedWikilinks) {
+        this.attrs.links = (this.attrs.links || []).concat(wikilinks);
+        searchedWikilinks = false;
+      } else {
+        const self = this;
+        fetch(`${self.attrs.actionCodePath}.json`)
+          .then((r) => r.json())
+          .then((r) => r.title)
+          .then((title) =>
+            searchForTerm(`[[${title}]]`).then((r) => {
+              searchedWikilinks = true;
+              wikilinks = r.topics
+                .map((t) => ({
+                  title: t.title,
+                  url: `${window.location.origin}/t/${t.slug}/${t.id}`,
+                  internal: true,
+                  reflection: true,
+                }))
+                .filter((t) => t.title !== title);
+              self.scheduleRerender();
+            })
+          )
+          .catch((e) => console.error(e));
+      }
+      return originalPostLinksHtml.bind(this)(attrs, state);
+    },
   });
 };
 
