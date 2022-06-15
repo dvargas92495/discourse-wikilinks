@@ -438,7 +438,9 @@ const initializeWikilinks = (api) => {
               self.scheduleRerender();
             })
           )
-          .catch((e) => console.error(e));
+          .catch((e) => {
+            console.error(e);
+          });
       }
       return originalPostLinksHtml.bind(this)(attrs, state);
     },
