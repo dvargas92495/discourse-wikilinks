@@ -395,24 +395,17 @@ const initializeWikilinks = (api) => {
     wrapper: "d-editor-preview-wrapper",
     content: "d-editor-preview",
   });
+
+  // api.addPostTransformCallback((...args) => {
+  //    could replace observer below
+  // });
   startWikilinksObserver({
     wrapper: "topic-body",
     content: "cooked",
   });
 
-  // api.addPostTransformCallback((...args) => {
-  //   console.log("posty", ...args);
-  // });
-
   // Hacky! TODO Improve
-  let wikilinks = [
-    {
-      url: "https://youtube.com",
-      title: "YouTube",
-      internal: true,
-      reflection: true,
-    },
-  ];
+  let wikilinks = [];
   let searchedWikilinks = false;
   api.reopenWidget("post-links", {
     html(attrs, state) {
@@ -438,8 +431,9 @@ const initializeWikilinks = (api) => {
               self.scheduleRerender();
             })
           )
-          .catch((e) => {
-            console.error(e);
+          .catch(() => {
+            searchedWikilinks = false;
+            // console.error(e);
           });
       }
       return originalPostLinksHtml.bind(this)(attrs, state);
