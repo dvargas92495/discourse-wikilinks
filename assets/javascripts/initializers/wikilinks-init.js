@@ -3,6 +3,7 @@ import { searchForTerm } from "discourse/lib/search";
 import { h } from "virtual-dom";
 
 const POPOVER_ID = "wikilinks-popover";
+const REGEX = /\[\[([^\]]+)\]\]/;
 
 function originalPostLinksHtml(attrs, state) {
   if (!this.attrs.links || this.attrs.links.length === 0) {
@@ -129,6 +130,7 @@ const getCoordsFromTextarea = (t) => {
 };
 
 const initializeWikilinks = (api) => {
+  console.log("sdfghj");
   let posts = [];
   document.addEventListener("input", (e) => {
     const { target } = e;
@@ -335,16 +337,77 @@ const initializeWikilinks = (api) => {
     }
   });
 
+  const createByWikilink = (title) =>
+    fetch("/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        raw: "This post was automatically created via a wikilink",
+        title,
+        // I copied the rest of these args from `/models/composer.js:createPost`
+        // From a breakpoint on `/adapters/post.js:createRecord`
+        unlist_topic: false,
+        category: null,
+        is_warning: false,
+        archetype: "regular",
+        typing_duration_msecs: 5000,
+        composer_open_duration_msecs: 28014,
+        shared_draft: false,
+        draft_key: "new_topic",
+        image_sizes: {},
+        nested_post: true,
+      }),
+    });
+      // .then((r) => r.json())
+      // .then((r) =>
+      //   window.location.assign(`/t/${r.post.topic_slug}/${r.post.topic_id}`)
+      // );
+  const titleToSlug = (title) =>
+    title
+      .replace(/[^a-z0-9A-Z\s/]/g, "")
+      .replace(/[\s/]/g, "-")
+      .toLowerCase();
+
+  document.addEventListener("click", (e) => {
+    const { target } = e;
+    if (
+      target.tagName === "BUTTON" &&
+      target.parentElement.classList.contains("save-or-cancel")
+    ) {
+      const editor = document.querySelector("textarea.d-editor-input");
+      const value = editor.value;
+      const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
+        (a) => a[1] || ""
+      );
+      // there's no way to fetch topics by title yet - let's make this change upstream in discourse
+      Promise.all(
+        links
+          .map((title) => ({
+            title,
+            slug: titleToSlug(title),
+          }))
+          .map((link) => fetch(`/t/${link.slug}`).then((r) => {
+            if (r.ok) {
+              // no need to create any new post
+              return Promise.resolve();
+            } else {
+              return createByWikilink(link.title)
+            }
+          }))
+      );
+    }
+  });
+
+  const isClass = (d, clss) => d.classList && d.classList.contains(clss);
   const startWikilinksObserver = ({ wrapper, content }) => {
-    const isPreview = (d) => d.classList && d.classList.contains(wrapper);
-    const REGEX = /\[\[([^\]]+)\]\]/;
     new MutationObserver(function (records) {
       new Set(
         records.flatMap((r) =>
           Array.from(r.addedNodes)
-            .filter((d) => isPreview(d) || d.hasChildNodes())
+            .filter((d) => isClass(d, wrapper) || d.hasChildNodes())
             .flatMap((d) =>
-              isPreview(d) ? [d] : Array.from(d.querySelectorAll(`.${wrapper}`))
+              isClass(d, wrapper)
+                ? [d]
+                : Array.from(d.querySelectorAll(`.${wrapper}`))
             )
         )
       ).forEach((el) => {
@@ -433,7 +496,6 @@ const initializeWikilinks = (api) => {
           )
           .catch(() => {
             searchedWikilinks = false;
-            // console.error(e);
           });
       }
       return originalPostLinksHtml.bind(this)(attrs, state);
