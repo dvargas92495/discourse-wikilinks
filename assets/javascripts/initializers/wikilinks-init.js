@@ -1,6 +1,8 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { searchForTerm } from "discourse/lib/search";
 import { h } from "virtual-dom";
+import { Promise } from "rsvp";
+import { ajax } from "discourse/lib/ajax";
 
 const POPOVER_ID = "wikilinks-popover";
 const REGEX = /\[\[([^\]]+)\]\]/;
@@ -130,7 +132,6 @@ const getCoordsFromTextarea = (t) => {
 };
 
 const initializeWikilinks = (api) => {
-  console.log("sdfghj");
   let posts = [];
   document.addEventListener("input", (e) => {
     const { target } = e;
@@ -337,68 +338,8 @@ const initializeWikilinks = (api) => {
     }
   });
 
-  const createByWikilink = (title) =>
-    fetch("/posts", {
-      method: "POST",
-      body: JSON.stringify({
-        raw: "This post was automatically created via a wikilink",
-        title,
-        // I copied the rest of these args from `/models/composer.js:createPost`
-        // From a breakpoint on `/adapters/post.js:createRecord`
-        unlist_topic: false,
-        category: null,
-        is_warning: false,
-        archetype: "regular",
-        typing_duration_msecs: 5000,
-        composer_open_duration_msecs: 28014,
-        shared_draft: false,
-        draft_key: "new_topic",
-        image_sizes: {},
-        nested_post: true,
-      }),
-    });
-      // .then((r) => r.json())
-      // .then((r) =>
-      //   window.location.assign(`/t/${r.post.topic_slug}/${r.post.topic_id}`)
-      // );
-  const titleToSlug = (title) =>
-    title
-      .replace(/[^a-z0-9A-Z\s/]/g, "")
-      .replace(/[\s/]/g, "-")
-      .toLowerCase();
-
-  document.addEventListener("click", (e) => {
-    const { target } = e;
-    if (
-      target.tagName === "BUTTON" &&
-      target.parentElement.classList.contains("save-or-cancel")
-    ) {
-      const editor = document.querySelector("textarea.d-editor-input");
-      const value = editor.value;
-      const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
-        (a) => a[1] || ""
-      );
-      // there's no way to fetch topics by title yet - let's make this change upstream in discourse
-      Promise.all(
-        links
-          .map((title) => ({
-            title,
-            slug: titleToSlug(title),
-          }))
-          .map((link) => fetch(`/t/${link.slug}`).then((r) => {
-            if (r.ok) {
-              // no need to create any new post
-              return Promise.resolve();
-            } else {
-              return createByWikilink(link.title)
-            }
-          }))
-      );
-    }
-  });
-
   const isClass = (d, clss) => d.classList && d.classList.contains(clss);
-  const startWikilinksObserver = ({ wrapper, content }) => {
+  const createClassObserver = ({ wrapper, attribute, callback }) =>
     new MutationObserver(function (records) {
       new Set(
         records.flatMap((r) =>
@@ -411,47 +352,60 @@ const initializeWikilinks = (api) => {
             )
         )
       ).forEach((el) => {
-        if (!el.hasAttribute("data-wikilinks-observer")) {
-          el.setAttribute("data-wikilinks-observer", "true");
-          const callback = () => {
-            document.querySelectorAll(`.${content} p`).forEach((p) => {
-              const nodesToEdit = Array.from(p.childNodes).filter(
-                (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
-              );
-              nodesToEdit.forEach((n) => {
-                const parts = n.nodeValue.split(REGEX);
-                parts.forEach((part, index) => {
-                  if (index % 2 === 1) {
-                    const anchor = document.createElement("a");
-                    anchor.href = `/t/${part
-                      .replace(/[^a-z0-9A-Z\s/]/g, "")
-                      .replace(/[\s/]/g, "-")
-                      .toLowerCase()}`;
-                    anchor.innerText = part;
-                    anchor.onclick = () => window.location.assign(anchor.href);
-                    p.insertBefore(anchor, n);
-                  } else {
-                    p.insertBefore(document.createTextNode(part), n);
-                  }
-                });
-                if (parts.length) {
-                  n.remove();
-                }
-              });
-            });
-          };
-          new MutationObserver(callback).observe(el, {
-            childList: true,
-            subtree: true,
-            attributes: false,
-            characterData: true,
-          });
-          callback();
+        const dataAttribute = `data-${attribute}-observer`;
+        if (!el.hasAttribute(dataAttribute)) {
+          el.setAttribute(dataAttribute, "true");
+          callback(el);
         }
       });
     }).observe(document.body, {
       childList: true,
       subtree: true,
+    });
+
+  const titleToSlug = (title) =>
+    title
+      .replace(/[^a-z0-9A-Z\s/]\s?/g, "")
+      .replace(/[\s/]/g, "-")
+      .toLowerCase();
+
+  const startWikilinksObserver = ({ wrapper, content }) => {
+    return createClassObserver({
+      wrapper,
+      attribute: "wikilinks",
+      callback: (el) => {
+        const callback = () => {
+          document.querySelectorAll(`.${content} p`).forEach((p) => {
+            const nodesToEdit = Array.from(p.childNodes).filter(
+              (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
+            );
+            nodesToEdit.forEach((n) => {
+              const parts = n.nodeValue.split(REGEX);
+              parts.forEach((part, index) => {
+                if (index % 2 === 1) {
+                  const anchor = document.createElement("a");
+                  anchor.href = `/t/${titleToSlug(part)}`;
+                  anchor.innerText = part;
+                  anchor.onclick = () => window.location.assign(anchor.href);
+                  p.insertBefore(anchor, n);
+                } else {
+                  p.insertBefore(document.createTextNode(part), n);
+                }
+              });
+              if (parts.length) {
+                n.remove();
+              }
+            });
+          });
+        };
+        new MutationObserver(callback).observe(el, {
+          childList: true,
+          subtree: true,
+          attributes: false,
+          characterData: true,
+        });
+        callback();
+      },
     });
   };
   startWikilinksObserver({
@@ -499,6 +453,71 @@ const initializeWikilinks = (api) => {
           });
       }
       return originalPostLinksHtml.bind(this)(attrs, state);
+    },
+  });
+
+  const createByWikilink = (title) => {
+    const data = {
+      raw: "This post was automatically created via a wikilink",
+      title,
+      // I copied the rest of these args from `/models/composer.js:createPost`
+      // From a breakpoint on `/adapters/post.js:createRecord`
+      unlist_topic: false,
+      category: null,
+      is_warning: false,
+      archetype: "regular",
+      typing_duration_msecs: 5000,
+      composer_open_duration_msecs: 28014,
+      shared_draft: false,
+      draft_key: "new_topic",
+      image_sizes: {},
+      nested_post: true,
+    };
+    return false
+      ? fetch("/posts", {
+          method: "POST",
+          body: JSON.stringify(data),
+          headers: {
+            "X-CSRF-Token": document.head.querySelector("meta[name=csrf-token]")
+              ?.content,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+        })
+      : ajax("/posts", { type: "POST", data });
+  };
+
+  createClassObserver({
+    wrapper: "save-or-cancel",
+    attribute: "create-post",
+    callback: (el) => {
+      const button = el.querySelector("button");
+      if (button) {
+        button.addEventListener("click", () => {
+          const editor = document.querySelector("textarea.d-editor-input");
+          const value = editor.value;
+          const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
+            (a) => a[1] || ""
+          );
+          // there's no way to fetch topics by title yet - let's make this change upstream in discourse
+          Promise.all(
+            links
+              .map((title) => ({
+                title,
+                slug: titleToSlug(title),
+              }))
+              .map((link) =>
+                fetch(`/t/${link.slug}`).then((r) => {
+                  if (r.ok) {
+                    // no need to create any new post
+                    return Promise.resolve();
+                  } else {
+                    return createByWikilink(link.title);
+                  }
+                })
+              )
+          );
+        });
+      }
     },
   });
 };
