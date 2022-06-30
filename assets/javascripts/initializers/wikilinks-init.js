@@ -4,6 +4,7 @@ import { h } from "virtual-dom";
 import { Promise } from "rsvp";
 import { ajax } from "discourse/lib/ajax";
 
+const PLUGIN_ID = "discourse-wikilinks";
 const POPOVER_ID = "wikilinks-popover";
 const REGEX = /\[\[([^\]]+)\]\]/;
 
@@ -122,10 +123,13 @@ const getCoordsFromTextarea = (t) => {
       span.offsetTop +
       parseInt(computed.borderTopWidth, 10) +
       parseInt(computed.fontSize, 10) -
-      t.scrollTop -
-      9,
+      t.scrollTop +
+      40,
     left:
-      windowLeft + span.offsetLeft + parseInt(computed.borderLeftWidth, 10) - 1,
+      windowLeft +
+      span.offsetLeft +
+      parseInt(computed.borderLeftWidth, 10) -
+      16,
   };
   document.body.removeChild(div);
   return coordinates;
@@ -212,8 +216,8 @@ const initializeWikilinks = (api) => {
             popoverRef.id = POPOVER_ID;
             popoverRef.className = "autocomplete ac-user";
             const { top, left } = getCoordsFromTextarea(target);
-            popoverRef.style.left = top + "px";
-            popoverRef.style.top = left + "px";
+            popoverRef.style.left = left + "px";
+            popoverRef.style.top = top + "px";
             popoverRef.style.position = "absolute";
             popoverRef.style.borderWidth = "0";
 
@@ -456,9 +460,9 @@ const initializeWikilinks = (api) => {
     },
   });
 
-  const createByWikilink = (title) => {
+  const createByWikilink = (title, raw) => {
     const data = {
-      raw: "This post was automatically created via a wikilink",
+      raw,
       title,
       // I copied the rest of these args from `/models/composer.js:createPost`
       // From a breakpoint on `/adapters/post.js:createRecord`
@@ -473,51 +477,43 @@ const initializeWikilinks = (api) => {
       image_sizes: {},
       nested_post: true,
     };
-    return false
-      ? fetch("/posts", {
-          method: "POST",
-          body: JSON.stringify(data),
-          headers: {
-            "X-CSRF-Token": document.head.querySelector("meta[name=csrf-token]")
-              ?.content,
-            "Content-Type": "application/json; charset=UTF-8",
-          },
-        })
-      : ajax("/posts", { type: "POST", data });
+    return ajax("/posts", { type: "POST", data });
   };
 
-  createClassObserver({
-    wrapper: "save-or-cancel",
-    attribute: "create-post",
-    callback: (el) => {
-      const button = el.querySelector("button");
-      if (button) {
-        button.addEventListener("click", () => {
-          const editor = document.querySelector("textarea.d-editor-input");
-          const value = editor.value;
-          const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
-            (a) => a[1] || ""
-          );
-          // there's no way to fetch topics by title yet - let's make this change upstream in discourse
-          Promise.all(
-            links
-              .map((title) => ({
-                title,
-                slug: titleToSlug(title),
-              }))
-              .map((link) =>
-                fetch(`/t/${link.slug}`).then((r) => {
-                  if (r.ok) {
-                    // no need to create any new post
-                    return Promise.resolve();
-                  } else {
-                    return createByWikilink(link.title);
-                  }
-                })
-              )
-          );
-        });
-      }
+  const createInlineWikilinks = (template) => {
+    const editor = document.querySelector("textarea.d-editor-input");
+    const value = editor.value;
+    const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
+      (a) => a[1] || ""
+    );
+    // there's no way to fetch topics by title yet - let's make this change upstream in discourse
+    return Promise.all(
+      links
+        .map((title) => ({
+          title,
+          slug: titleToSlug(title),
+        }))
+        .map((link) =>
+          fetch(`/t/${link.slug}`).then((r) => {
+            if (r.ok) {
+              // no need to create any new post
+              return Promise.resolve();
+            } else {
+              return createByWikilink(link.title, template);
+            }
+          })
+        )
+    );
+  };
+
+  api.modifyClass("controller:composer", {
+    pluginId: PLUGIN_ID,
+    actions: {
+      save(...args) {
+        createInlineWikilinks(
+          this.siteSettings.discourse_wikilinks_new_wikilink_template
+        ).then(this.save(...args));
+      },
     },
   });
 };

@@ -2,3 +2,7 @@ en:
   js:
     discourse_plugin_name:
       placeholder: placeholder
+  site_settings:
+    discourse_wikilinks_enabled: "Is this plugin enabled?"
+    discourse_wikilinks_new_wikilink_template: "What should new topics created by inline linking have by default?"
+  

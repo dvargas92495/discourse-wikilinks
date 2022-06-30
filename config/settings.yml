@@ -1,4 +1,7 @@
 plugins:
-  plugin_name_enabled:
+  discourse_wikilinks_enabled:
     default: true
+    client: true
+  discourse_wikilinks_new_wikilink_template:
+    default: "This post was automatically created via a wikilink"
     client: true
