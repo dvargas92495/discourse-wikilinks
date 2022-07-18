@@ -430,31 +430,33 @@ const initializeWikilinks = (api) => {
   let searchedWikilinks = false;
   api.reopenWidget("post-links", {
     html(attrs, state) {
-      if (searchedWikilinks) {
-        this.attrs.links = (this.attrs.links || []).concat(wikilinks);
-        searchedWikilinks = false;
-      } else {
-        const self = this;
-        fetch(`${self.attrs.actionCodePath}.json`)
-          .then((r) => r.json())
-          .then((r) => r.title)
-          .then((title) =>
-            searchForTerm(`[[${title}]]`).then((r) => {
-              searchedWikilinks = true;
-              wikilinks = r.topics
-                .map((t) => ({
-                  title: t.title,
-                  url: `${window.location.origin}/t/${t.slug}/${t.id}`,
-                  internal: true,
-                  reflection: true,
-                }))
-                .filter((t) => t.title !== title);
-              self.scheduleRerender();
-            })
-          )
-          .catch(() => {
-            searchedWikilinks = false;
-          });
+      if (this.attrs.firstPost) {
+        if (searchedWikilinks) {
+          this.attrs.links = (this.attrs.links || []).concat(wikilinks);
+          searchedWikilinks = false;
+        } else {
+          const self = this;
+          fetch(`${self.attrs.actionCodePath}.json`)
+            .then((r) => r.json())
+            .then((r) => r.title)
+            .then((title) =>
+              searchForTerm(`[[${title}]]`).then((r) => {
+                searchedWikilinks = true;
+                wikilinks = r.topics
+                  .map((t) => ({
+                    title: t.title,
+                    url: `${window.location.origin}/t/${t.slug}/${t.id}`,
+                    internal: true,
+                    reflection: true,
+                  }))
+                  .filter((t) => t.title !== title);
+                self.scheduleRerender();
+              })
+            )
+            .catch(() => {
+              searchedWikilinks = false;
+            });
+        }
       }
       return originalPostLinksHtml.bind(this)(attrs, state);
     },
