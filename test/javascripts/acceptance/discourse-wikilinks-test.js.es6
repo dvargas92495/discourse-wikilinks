@@ -10,7 +10,7 @@ acceptance("Discourse Wikilinks", function (needs) {
 
     // Ember docs: https://guides.emberjs.com/v2.13.0/testing/acceptance/
     // https://meta.discourse.org/t/beginner-s-guide-to-creating-discourse-plugins-part-6-acceptance-tests/32619#adding-an-acceptance-test-in-your-plugin-1
-    // 
+    //
     // andThen(() => {
     //   assert.ok(
     //     exists("#show-tentacle"),

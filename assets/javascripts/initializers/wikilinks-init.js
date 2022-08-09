@@ -188,7 +188,7 @@ const initializeWikilinks = (api) => {
                 img.loading = "lazy";
                 img.width = "20";
                 img.height = "20";
-                img.src = post.avatar_template;
+                img.src = post.avatar_template.replace("{size}", 20);
                 img.className = "avatar";
                 img.title = post.topic.fancy_title;
                 img.ariaLabel = post.topic.fancy_title;
@@ -223,8 +223,13 @@ const initializeWikilinks = (api) => {
 
             const style = document.createElement("style");
             style.innerHTML = `#${POPOVER_ID}.autocomplete ul li a.wikilinks-selected {
-            background-color: var(--highlight-low);
-          }`;
+  background-color: var(--highlight-low);
+}
+
+#${POPOVER_ID} .username {
+  margin-left: 8px;
+  vertical-align: middle;
+}`;
             popoverRef.appendChild(style);
 
             const list = document.createElement("ul");
