@@ -384,28 +384,30 @@ const initializeWikilinks = (api) => {
       attribute: "wikilinks",
       callback: (el) => {
         const callback = () => {
-          document.querySelectorAll(`.${content} p`).forEach((p) => {
-            const nodesToEdit = Array.from(p.childNodes).filter(
-              (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
-            );
-            nodesToEdit.forEach((n) => {
-              const parts = n.nodeValue.split(REGEX);
-              parts.forEach((part, index) => {
-                if (index % 2 === 1) {
-                  const anchor = document.createElement("a");
-                  anchor.href = `/t/${titleToSlug(part)}`;
-                  anchor.innerText = part;
-                  anchor.onclick = () => window.location.assign(anchor.href);
-                  p.insertBefore(anchor, n);
-                } else {
-                  p.insertBefore(document.createTextNode(part), n);
+          document
+            .querySelectorAll(`.${content} p, .${content} li`)
+            .forEach((p) => {
+              const nodesToEdit = Array.from(p.childNodes).filter(
+                (n) => n.nodeName === "#text" && REGEX.test(n.nodeValue)
+              );
+              nodesToEdit.forEach((n) => {
+                const parts = n.nodeValue.split(REGEX);
+                parts.forEach((part, index) => {
+                  if (index % 2 === 1) {
+                    const anchor = document.createElement("a");
+                    anchor.href = `/t/${titleToSlug(part)}`;
+                    anchor.innerText = part;
+                    anchor.onclick = () => window.location.assign(anchor.href);
+                    p.insertBefore(anchor, n);
+                  } else {
+                    p.insertBefore(document.createTextNode(part), n);
+                  }
+                });
+                if (parts.length) {
+                  n.remove();
                 }
               });
-              if (parts.length) {
-                n.remove();
-              }
             });
-          });
         };
         new MutationObserver(callback).observe(el, {
           childList: true,
@@ -467,14 +469,15 @@ const initializeWikilinks = (api) => {
     },
   });
 
-  const createByWikilink = (title, raw) => {
+  const createByWikilink = ({ title, template, category, tags }) => {
     const data = {
-      raw,
+      raw: template,
       title,
+      category,
+      tags,
       // I copied the rest of these args from `/models/composer.js:createPost`
       // From a breakpoint on `/adapters/post.js:createRecord`
       unlist_topic: false,
-      category: null,
       is_warning: false,
       archetype: "regular",
       typing_duration_msecs: 5000,
@@ -487,7 +490,7 @@ const initializeWikilinks = (api) => {
     return ajax("/posts", { type: "POST", data });
   };
 
-  const createInlineWikilinks = (template) => {
+  const createInlineWikilinks = (args) => {
     const editor = document.querySelector("textarea.d-editor-input");
     const value = editor.value;
     const links = Array.from(value.matchAll(new RegExp(REGEX, "g"))).map(
@@ -506,7 +509,7 @@ const initializeWikilinks = (api) => {
               // no need to create any new post
               return Promise.resolve();
             } else {
-              return createByWikilink(link.title, template);
+              return createByWikilink({ title: link.title, ...args });
             }
           })
         )
@@ -517,9 +520,11 @@ const initializeWikilinks = (api) => {
     pluginId: PLUGIN_ID,
     actions: {
       save(...args) {
-        createInlineWikilinks(
-          this.siteSettings.discourse_wikilinks_new_wikilink_template
-        ).then(this.save(...args));
+        createInlineWikilinks({
+          template: this.siteSettings.discourse_wikilinks_new_wikilink_template,
+          category: this.model.categoryId || null,
+          tags: this.model.tags || [],
+        }).then(() => this.save(...args));
       },
     },
   });
